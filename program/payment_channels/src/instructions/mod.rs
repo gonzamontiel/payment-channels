@@ -7,6 +7,7 @@ pub mod request_close;
 pub mod seal;
 pub mod settle;
 pub mod settle_and_seal;
+pub mod settle_metered;
 pub mod top_up;
 pub mod withdraw_payer;
 
@@ -256,6 +257,17 @@ pub enum PaymentChannelsInstruction<'a> {
     )]
     Reclaim = 9,
 
+    /// Permissionless crank: advances [`settled`](crate::Channel::settled)
+    /// against a metered cap/claim voucher pair. Account shape matches
+    /// [`Settle`]. Phase-1 scaffolding is a no-op; settlement lands in
+    /// phase 2. `OPEN → OPEN`.
+    #[cfg_attr(
+        feature = "idl",
+        codama(account(name = "channel", writable)),
+        codama(account(name = "instructions_sysvar"))
+    )]
+    SettleMetered = 10,
+
     /// Self-CPI target for the event pipeline; not part of the public
     /// instruction set. `228 = EVENT_IX_TAG_LE[0]`: self-CPI event data
     /// starts with this byte, so byte-0 dispatch routes straight to
@@ -284,6 +296,7 @@ impl<'a> PaymentChannelsInstruction<'a> {
             Self::Distribute(_) => "distribute",
             Self::WithdrawPayer => "withdraw_payer",
             Self::Reclaim => "reclaim",
+            Self::SettleMetered => "settle_metered",
             Self::EmitEvent => "emit_event",
         }
     }
@@ -307,6 +320,7 @@ impl<'a> PaymentChannelsInstruction<'a> {
             }
             withdraw_payer::DISCRIMINATOR => Ok(Self::WithdrawPayer),
             reclaim::DISCRIMINATOR => Ok(Self::Reclaim),
+            settle_metered::DISCRIMINATOR => Ok(Self::SettleMetered),
             emit_event::DISCRIMINATOR => Ok(Self::EmitEvent),
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -366,6 +380,10 @@ mod tests {
         assert_eq!(
             tag(&PaymentChannelsInstruction::Reclaim),
             reclaim::DISCRIMINATOR,
+        );
+        assert_eq!(
+            tag(&PaymentChannelsInstruction::SettleMetered),
+            settle_metered::DISCRIMINATOR,
         );
         assert_eq!(
             tag(&PaymentChannelsInstruction::EmitEvent),

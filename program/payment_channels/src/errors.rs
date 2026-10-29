@@ -95,6 +95,18 @@ pub enum PaymentChannelsError {
     VoucherSignerMismatch = 237,
     #[error("Voucher payload magic prefix is invalid")]
     VoucherBadMagic = 238,
+    /// Reserved for metered settlement: cap and claim must share the same
+    /// operator pubkey. Not returned until phase 2.
+    #[error("Metered voucher operator pubkey mismatch")]
+    VoucherOperatorMismatch = 239,
+    /// Reserved for metered settlement: claim amount must not exceed the
+    /// signed cap. Not returned until phase 2.
+    #[error("Metered claim exceeds signed cap")]
+    ClaimExceedsCap = 240,
+    /// Reserved for metered settlement: second Ed25519 precompile ix
+    /// (cap at `current - 2`) is required. Not returned until phase 2.
+    #[error("Missing Ed25519 precompile ix at current-2")]
+    MissingSecondEd25519Verification = 241,
 
     // distribution validation
     #[error("num_recipients outside [0, 32]")]
@@ -167,4 +179,19 @@ pub enum PaymentChannelsError {
     DistributeTransferQueueOverflow = 2413,
     #[error("Channel cannot be fully closed until clock.slot > open_slot + OPEN_SLOT_WINDOW")]
     ChannelCloseTooEarly = 2414,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PaymentChannelsError;
+
+    #[test]
+    fn metered_settlement_error_discriminants() {
+        assert_eq!(PaymentChannelsError::VoucherOperatorMismatch as u32, 239);
+        assert_eq!(PaymentChannelsError::ClaimExceedsCap as u32, 240);
+        assert_eq!(
+            PaymentChannelsError::MissingSecondEd25519Verification as u32,
+            241
+        );
+    }
 }
