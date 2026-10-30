@@ -103,8 +103,6 @@ pub enum PaymentChannelsError {
     /// signed cap. Not returned until phase 2.
     #[error("Metered claim exceeds signed cap")]
     ClaimExceedsCap = 240,
-    /// Reserved for metered settlement: second Ed25519 precompile ix
-    /// (cap at `current - 2`) is required. Not returned until phase 2.
     #[error("Missing Ed25519 precompile ix at current-2")]
     MissingSecondEd25519Verification = 241,
 

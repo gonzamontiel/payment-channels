@@ -15,7 +15,9 @@ use pinocchio::{AccountView, Address, error::ProgramError, sysvars::instructions
 
 use super::ed25519::parse as ed25519_ix;
 use crate::errors::PaymentChannelsError;
-use crate::instructions::{VOUCHER_MAGIC, VoucherArgs};
+use crate::instructions::{
+    CAP_VOUCHER_PAYLOAD_SIZE, CLAIM_VOUCHER_PAYLOAD_SIZE, VOUCHER_MAGIC, VoucherArgs,
+};
 use crate::state::channel::Channel;
 use crate::state::load;
 
@@ -41,6 +43,49 @@ pub fn verify_voucher(
     let parsed = ed25519_ix::parse(ix.get_instruction_data())
         .map_err(|_| PaymentChannelsError::MalformedEd25519Instruction)?;
     verify_parsed(channel_address, channel, &parsed, now_unix)
+}
+
+/// Require the cap precompile at `current - 2` and the claim precompile at
+/// `current - 1`. Does not interpret the signed messages.
+pub fn require_metered_precompile_pair(
+    instructions_sysvar: &AccountView,
+) -> Result<(), ProgramError> {
+    let sysvar = Instructions::try_from(instructions_sysvar)?;
+    let current = sysvar.load_current_index();
+    load_canonical_ed25519(
+        &sysvar,
+        current,
+        2,
+        CAP_VOUCHER_PAYLOAD_SIZE,
+        PaymentChannelsError::MissingSecondEd25519Verification,
+    )?;
+    load_canonical_ed25519(
+        &sysvar,
+        current,
+        1,
+        CLAIM_VOUCHER_PAYLOAD_SIZE,
+        PaymentChannelsError::MissingEd25519Verification,
+    )?;
+    Ok(())
+}
+
+fn load_canonical_ed25519(
+    sysvar: &Instructions<impl core::ops::Deref<Target = [u8]>>,
+    current: u16,
+    distance: u16,
+    message_len: usize,
+    missing: PaymentChannelsError,
+) -> Result<(), ProgramError> {
+    let index = current.checked_sub(distance).ok_or(missing)?;
+    let ix = sysvar
+        .load_instruction_at(index as usize)
+        .map_err(|_| missing)?;
+    if ix.get_program_id() != &crate::ed25519::PROGRAM_ID {
+        return Err(missing.into());
+    }
+    ed25519_ix::parse_with_message_len(ix.get_instruction_data(), message_len)
+        .map_err(|_| PaymentChannelsError::MalformedEd25519Instruction)?;
+    Ok(())
 }
 
 /// Validate the precompile-verified voucher against channel state.
@@ -106,7 +151,7 @@ mod tests {
     use std::vec::Vec;
 
     use super::*;
-    use crate::instructions::VOUCHER_PAYLOAD_SIZE;
+    use crate::instructions::{CAP_VOUCHER_PAYLOAD_SIZE, VOUCHER_PAYLOAD_SIZE};
     use crate::state::Transmutable;
 
     const CHANNEL_ID: Address = Address::new_from_array([7u8; 32]);
@@ -528,6 +573,16 @@ mod tests {
             parse_err(&data),
             ed25519_ix::Ed25519ParseError::CrossInstruction,
         );
+    }
+
+    #[test]
+    fn parse_with_message_len_accepts_cap_sized_message() {
+        let message = [0x56u8, 0x03].repeat(CAP_VOUCHER_PAYLOAD_SIZE / 2);
+        let data = build_ix_data(AUTH.as_array(), &message, &AUTH_SIGNATURE);
+        let parsed = ed25519_ix::parse_with_message_len(&data, CAP_VOUCHER_PAYLOAD_SIZE)
+            .expect("82-byte canonical message");
+        assert_eq!(parsed.message, message.as_slice());
+        assert_eq!(parse_err(&data), ed25519_ix::Ed25519ParseError::Length);
     }
 
     #[test]

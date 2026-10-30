@@ -1,5 +1,7 @@
 use pinocchio::{AccountView, Address, ProgramResult, error::ProgramError};
 
+use crate::instructions::helpers::voucher::require_metered_precompile_pair;
+
 /// Instruction discriminator byte for `settle_metered`.
 pub const DISCRIMINATOR: u8 = 10;
 
@@ -23,6 +25,7 @@ impl<'a> TryFrom<&'a mut [AccountView]> for SettleMeteredAccounts<'a> {
 }
 
 pub fn process(_program_id: &Address, accounts: &mut [AccountView]) -> ProgramResult {
-    let _accs = SettleMeteredAccounts::try_from(accounts)?;
+    let accs = SettleMeteredAccounts::try_from(accounts)?;
+    require_metered_precompile_pair(accs.instructions_sysvar)?;
     Ok(())
 }
