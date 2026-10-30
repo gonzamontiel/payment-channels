@@ -44,7 +44,18 @@ pub fn build_ed25519_ix(
     signature: &[u8; ed25519::SIGNATURE_SERIALIZED_SIZE],
     message: &[u8; VOUCHER_PAYLOAD_SIZE],
 ) -> Instruction {
-    let mut data = Vec::with_capacity(ed25519::MESSAGE_OFFSET + VOUCHER_PAYLOAD_SIZE);
+    build_ed25519_ix_for_message(pubkey, signature, message)
+}
+
+/// Same canonical layout as [`build_ed25519_ix`], for a signed message whose
+/// length is not [`VOUCHER_PAYLOAD_SIZE`].
+pub fn build_ed25519_ix_for_message(
+    pubkey: &[u8; ed25519::PUBKEY_SERIALIZED_SIZE],
+    signature: &[u8; ed25519::SIGNATURE_SERIALIZED_SIZE],
+    message: &[u8],
+) -> Instruction {
+    let message_size = u16::try_from(message.len()).expect("ed25519 message length fits u16");
+    let mut data = Vec::with_capacity(ed25519::MESSAGE_OFFSET + message.len());
     data.push(1u8); // num_signatures
     data.push(0u8); // padding
     data.extend_from_slice(&(ed25519::SIGNATURE_OFFSET as u16).to_le_bytes());
@@ -52,7 +63,7 @@ pub fn build_ed25519_ix(
     data.extend_from_slice(&(ed25519::PUBKEY_OFFSET as u16).to_le_bytes());
     data.extend_from_slice(&u16::MAX.to_le_bytes()); // public_key_instruction_index
     data.extend_from_slice(&(ed25519::MESSAGE_OFFSET as u16).to_le_bytes());
-    data.extend_from_slice(&(VOUCHER_PAYLOAD_SIZE as u16).to_le_bytes());
+    data.extend_from_slice(&message_size.to_le_bytes());
     data.extend_from_slice(&u16::MAX.to_le_bytes()); // message_instruction_index
     data.extend_from_slice(pubkey);
     data.extend_from_slice(signature);
