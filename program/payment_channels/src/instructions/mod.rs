@@ -84,17 +84,124 @@ impl VoucherArgs {
 /// truncated or extended message.
 pub const VOUCHER_PAYLOAD_SIZE: usize = core::mem::size_of::<VoucherArgs>();
 
-/// Pins [`VOUCHER_PAYLOAD_SIZE`] to the Ed25519 precompile's `u16`
-/// `message_data_size` field so the `as u16` casts at ix-build sites
-/// can't silently truncate, and pins the exact byte width the off-chain
-/// signer contract depends on.
+/// Domain-separation prefix of the signed cap: tag `'V'` plus format `0x03`.
+pub const CAP_VOUCHER_MAGIC: [u8; 2] = [0x56, 0x03];
+
+/// Signed cap: `magic || channel_id || cap_cumulative || expires_at || operator`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CapVoucher {
+    /// Must equal [`CAP_VOUCHER_MAGIC`].
+    pub magic: [u8; 2],
+    /// Must equal the [`Channel`](crate::Channel) PDA.
+    pub channel_id: Address,
+    cap_cumulative: [u8; 8],
+    /// Unix-seconds TTL; `0` means no expiry.
+    expires_at: [u8; 8],
+    /// Ed25519 pubkey authorized to sign the claim.
+    pub operator: Address,
+}
+
+impl CapVoucher {
+    pub fn new(
+        channel_id: Address,
+        cap_cumulative: u64,
+        expires_at: i64,
+        operator: Address,
+    ) -> Self {
+        Self {
+            magic: CAP_VOUCHER_MAGIC,
+            channel_id,
+            cap_cumulative: cap_cumulative.to_le_bytes(),
+            expires_at: expires_at.to_le_bytes(),
+            operator,
+        }
+    }
+
+    #[inline(always)]
+    pub fn cap_cumulative(&self) -> u64 {
+        u64::from_le_bytes(self.cap_cumulative)
+    }
+
+    #[inline(always)]
+    pub fn expires_at(&self) -> i64 {
+        i64::from_le_bytes(self.expires_at)
+    }
+}
+
+/// Domain-separation prefix of the signed claim: tag `'V'` plus format `0x04`.
+pub const CLAIM_VOUCHER_MAGIC: [u8; 2] = [0x56, 0x04];
+
+/// Signed claim: `magic || channel_id || claim_cumulative || expires_at`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct ClaimVoucher {
+    /// Must equal [`CLAIM_VOUCHER_MAGIC`].
+    pub magic: [u8; 2],
+    /// Must equal the [`Channel`](crate::Channel) PDA.
+    pub channel_id: Address,
+    claim_cumulative: [u8; 8],
+    /// Unix-seconds TTL; `0` means no expiry.
+    expires_at: [u8; 8],
+}
+
+impl ClaimVoucher {
+    pub fn new(channel_id: Address, claim_cumulative: u64, expires_at: i64) -> Self {
+        Self {
+            magic: CLAIM_VOUCHER_MAGIC,
+            channel_id,
+            claim_cumulative: claim_cumulative.to_le_bytes(),
+            expires_at: expires_at.to_le_bytes(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn claim_cumulative(&self) -> u64 {
+        u64::from_le_bytes(self.claim_cumulative)
+    }
+
+    #[inline(always)]
+    pub fn expires_at(&self) -> i64 {
+        i64::from_le_bytes(self.expires_at)
+    }
+}
+
+/// Canonical `message_data_size` of a cap precompile instruction.
+pub const CAP_VOUCHER_PAYLOAD_SIZE: usize = core::mem::size_of::<CapVoucher>();
+
+/// Canonical `message_data_size` of a claim precompile instruction.
+pub const CLAIM_VOUCHER_PAYLOAD_SIZE: usize = core::mem::size_of::<ClaimVoucher>();
+
+/// Pins payload widths to the Ed25519 precompile's `u16` `message_data_size`
+/// field so the `as u16` casts at ix-build sites can't silently truncate,
+/// and pins the exact byte width the off-chain signer contract depends on.
 const _: () = {
     assert!(VOUCHER_PAYLOAD_SIZE <= u16::MAX as usize);
     assert!(VOUCHER_PAYLOAD_SIZE == 50);
+    assert!(CAP_VOUCHER_PAYLOAD_SIZE == 82);
+    assert!(CLAIM_VOUCHER_PAYLOAD_SIZE == VOUCHER_PAYLOAD_SIZE);
+    assert!(CAP_VOUCHER_MAGIC[0] == VOUCHER_MAGIC[0] && CAP_VOUCHER_MAGIC[1] == 0x03);
+    assert!(CLAIM_VOUCHER_MAGIC[0] == VOUCHER_MAGIC[0] && CLAIM_VOUCHER_MAGIC[1] == 0x04);
+    assert!(VOUCHER_MAGIC[1] == 0x01);
+    assert!(core::mem::offset_of!(CapVoucher, channel_id) == 2);
+    assert!(core::mem::offset_of!(CapVoucher, cap_cumulative) == 34);
+    assert!(core::mem::offset_of!(CapVoucher, expires_at) == 42);
+    assert!(core::mem::offset_of!(CapVoucher, operator) == 50);
+    assert!(core::mem::offset_of!(ClaimVoucher, channel_id) == 2);
+    assert!(core::mem::offset_of!(ClaimVoucher, claim_cumulative) == 34);
+    assert!(core::mem::offset_of!(ClaimVoucher, expires_at) == 42);
 };
 
 unsafe impl Transmutable for VoucherArgs {
     const LEN: usize = VOUCHER_PAYLOAD_SIZE;
+}
+
+unsafe impl Transmutable for CapVoucher {
+    const LEN: usize = CAP_VOUCHER_PAYLOAD_SIZE;
+}
+
+unsafe impl Transmutable for ClaimVoucher {
+    const LEN: usize = CLAIM_VOUCHER_PAYLOAD_SIZE;
 }
 
 /// PDA signer for Anchor-compatible self-CPI event emission.
