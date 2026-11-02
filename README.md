@@ -1,3 +1,4 @@
+
 # payment-channels
 
 > Payment channels make agentic payments practical by escrowing a spending ceiling on-chain and settling actual usage from signed vouchers; this program backs [MPP `session`](https://paymentauth.org/draft-solana-session-00.html) for streaming or repeated payments and [x402 `upto`](https://github.com/x402-foundation/x402/blob/main/specs/schemes/upto/scheme_upto_svm.md) for one metered request.
